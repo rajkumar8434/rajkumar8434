@@ -1,0 +1,138 @@
+python name=main.py
+# Main entry point for Smart Plant Identifier & Reforestation Mapper
+
+from plant_classifier import is_plant, predict_species
+from geolocation_logger import get_geolocation
+from biodiversity_mapper import add_species_to_map, create_map
+from climate_data_fetcher import get_climate_data
+from reforestation_planner import suggest_trees
+from drone_image_processor import process_aerial_image
+
+def main(image_path):
+    # Step 1: Identify if the input contains a plant
+    print("Processing image...")
+    if not is_plant(image_path):
+        print("No plant detected in the image.")
+        return
+
+    # Step 2: Predict the species of the plant
+    species = predict_species(image_path)
+    print(f"Detected Species: {species}")
+
+    # Step 3: Log the geolocation of the plant
+    latitude, longitude = get_geolocation()
+    print(f"Geolocation logged: Latitude={latitude}, Longitude={longitude}")
+
+    # Step 4: Add the species to a biodiversity map
+    biodiversity_map = create_map(latitude, longitude)
+    add_species_to_map(species, latitude, longitude, biodiversity_map)
+    print(f"Added species to biodiversity map.")
+
+    # Step 5: Fetch local climate data
+    temperature, weather_desc = get_climate_data(latitude, longitude)
+    print(f"Climate Data: Temperature={temperature}, Weather={weather_desc}")
+
+    # Step 6: Suggest climate-appropriate trees for reforestation
+    soil_type = "loamy"  # Replace with actual soil type fetched from an API
+    suggested_trees = suggest_trees(temperature, soil_type)
+    print(f"Suggested Trees for Reforestation: {', '.join(suggested_trees)}")
+
+    # Save the biodiversity map
+    biodiversity_map.save("biodiversity_map.html")
+    print("Biodiversity map saved as 'biodiversity_map.html'.")
+
+if __name__ == "__main__":
+    sample_image_path = "sample_tree.jpg"  # Replace with actual image input path
+    main(sample_image_path)
+`
+
+`python name=plant_classifier.py
+import tensorflow as tf
+import cv2
+import numpy as np
+
+# Load pre-trained model for plant detection
+plant_model = tf.keras.applications.MobileNetV2(weights='imagenet')
+
+# Load fine-tuned model for species classification
+species_model = tf.keras.models.load_model("plant_species_model.h5")
+
+def preprocess_image(image_path):
+    image = cv2.imread(image_path)
+    image = cv2.resize(image, (224, 224))
+    image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
+    return np.expand_dims(image, axis=0)
+
+def is_plant(image_path):
+    processed = preprocess_image(image_path)
+    predictions = plant_model.predict(processed)
+    decoded_predictions = tf.keras.applications.mobilenet_v2.decode_predictions(predictions, top=1)
+    return "plant" in decoded_predictions[0][0][1].lower()
+
+def predict_species(image_path):
+    processed = preprocess_image(image_path)
+    predictions = species_model.predict(processed)
+    species = np.argmax(predictions)  # Assuming label-encoded species
+    return f"Species_ID_{species}"  # Replace with actual species name mapping
+`
+
+`python name=geolocation_logger.py
+from geopy.geocoders import Nominatim
+
+def get_geolocation():
+    geolocator = Nominatim(user_agent="geoapi")
+    location = geolocator.geocode("Your Address or Coordinates")  # Replace with dynamic input
+    return location.latitude, location.longitude
+`
+
+`python name=biodiversity_mapper.py
+import folium
+
+def create_map(latitude, longitude):
+    return folium.Map(location=[latitude, longitude], zoom_start=10)
+
+def add_species_to_map(species, latitude, longitude, map_obj):
+    folium.Marker(
+        location=[latitude, longitude],
+        popup=f"Species: {species}",
+        icon=folium.Icon(color="green", icon="leaf"),
+    ).add_to(map_obj)
+`
+
+`python name=climate_data_fetcher.py
+import requests
+
+def get_climate_data(lat, lon):
+    api_key = "your_openweathermap_api_key"
+    url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}"
+    response = requests.get(url)
+    data = response.json()
+    temperature = data["main"]["temp"]
+    weather_desc = data["weather"][0]["description"]
+    return temperature, weather_desc
+`
+
+`python name=reforestation_planner.py
+# Example tree database
+tree_database = {
+    "Oak": {"min_temp": -10, "max_temp": 30, "soil": "loamy"},
+    "Pine": {"min_temp": -20, "max_temp": 25, "soil": "sandy"},
+}
+
+def suggest_trees(temperature, soil_type):
+    suggestions = []
+    for tree, details in tree_database.items():
+        if details["min_temp"] <= temperature <= details["max_temp"] and details["soil"] == soil_type:
+            suggestions.append(tree)
+    return suggestions
+`
+
+`python name=drone_image_processor.py
+import rasterio
+
+def process_aerial_image(image_path):
+    with rasterio.open(image_path) as dataset:
+        image_array = dataset.read(1)
+        vegetation_mask = image_array > 0.3  # Example vegetation threshold
+        return vegetation_mask
+`
